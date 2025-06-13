@@ -3,6 +3,7 @@ from discord.ext import commands
 from discord import app_commands
 import os
 from dotenv import load_dotenv
+import string
 
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
@@ -53,13 +54,14 @@ def render_keyboard(correct, present, wrong):
 
     return f"```{line1}\n{line2}\n{line3}```"
 
-@bot.command()
-async def startgame(ctx, opponent: discord.Member):
-    player1 = ctx.author.id
+@tree.command(name="startgame", description="與指定對象開始 Wordle 對戰")
+@app_commands.describe(opponent="對手（會猜的人）")
+async def startgame(interaction: discord.Interaction, opponent: discord.Member):
+    player1 = interaction.user.id
     player2 = opponent.id
     key = tuple(sorted((player1, player2)))
     if key in games:
-        await ctx.send("這場對戰已經開始了。")
+        await interaction.response.send_message("⚠️ 這場對戰已經開始了。", ephemeral=True)
         return
     games[key] = {
         "word": None,
@@ -67,16 +69,16 @@ async def startgame(ctx, opponent: discord.Member):
         "tries": 0,
         "correct": set(),
         "present": set(),
-        "wrong": set(),
-        "channel": ctx.channel
+        "wrong": set()
     }
-    await ctx.send(f"對戰已建立！請 <@{player1}> 使用 `/setword` 指令設定答案單字。")
+    await interaction.response.send_message(f"🕹️ 對戰已建立！請 <@{player1}> 使用 `/setword` 指令設定答案單字（僅自己可見）")
 
-@tree.command(name="setword", description="設定 Wordle 答案（只有你看得到）")
-@app_commands.describe(word="5 個英文字母單字")
+@tree.command(name="setword", description="設定 Wordle 答案（只有自己看得到）")
+@app_commands.describe(word="請輸入 5 個英文字母單字")
 async def setword(interaction: discord.Interaction, word: str):
     user_id = interaction.user.id
     word = word.upper()
+
     for key, game in games.items():
         if user_id in key:
             if game["word"] is not None:
@@ -89,27 +91,25 @@ async def setword(interaction: discord.Interaction, word: str):
 
             game["word"] = word
             await interaction.response.send_message(f"✅ 答案已設定成功：{word}", ephemeral=True)
-
-            # ➤ 對猜題者發送公開訊息
-            channel = game.get("channel")
             guesser_id = game["guesser"]
-            if channel:
-                await channel.send(f"📢 <@{guesser_id}> 現在可以開始猜題囉！請使用 `!guess` 試試看吧！")
+            channel = interaction.channel
+            await channel.send(f"📢 對戰開始！<@{guesser_id}> 可以開始猜題！")
             return
-    await interaction.response.send_message("❌ 沒有你可以設定答案的遊戲。", ephemeral=True)
 
-@bot.command()
-async def guess(ctx, word: str):
-    user_id = ctx.author.id
+    await interaction.response.send_message("❌ 找不到你可以設定答案的對戰。", ephemeral=True)
+
+@tree.command(name="guess", description="猜一個單字")
+@app_commands.describe(word="你要猜的 5 字母單字")
+async def guess(interaction: discord.Interaction, word: str):
+    user_id = interaction.user.id
     for key, game in games.items():
         if user_id == game["guesser"] and game["word"]:
             if len(word) != 5 or not word.isalpha():
-                await ctx.send("請輸入5個英文字母的單字。")
+                await interaction.response.send_message("請輸入5個英文字母的單字。")
                 return
             word = word.upper()
             game["tries"] += 1
             fb = feedback(word, game["word"])
-            await ctx.send(f"{word} ➤ {fb}（{game['tries']}/6）")
 
             for i in range(len(word)):
                 ch = word[i]
@@ -123,31 +123,35 @@ async def guess(ctx, word: str):
                         game["wrong"].add(ch)
 
             keyboard_view = render_keyboard(game["correct"], game["present"], game["wrong"])
-            await ctx.send(f"鍵盤狀態：\n{keyboard_view}")
+
+            await interaction.response.send_message(f"{word} ({game['tries']}/6) \u279e {fb}\n鍵盤狀態：\n{keyboard_view}")
 
             if fb == "🟩🟩🟩🟩🟩":
-                await ctx.send(f"🎉 猜中啦！共嘗試 {game['tries']} 次。遊戲結束！")
+                await interaction.channel.send(f"🎉 猜中啦！共嘗試 {game['tries']} 次。遊戲結束！")
                 del games[key]
             elif game["tries"] >= 6:
-                await ctx.send(f"❌ 猜錯 6 次了，正確答案是 {game['word']}。")
+                await interaction.channel.send(f"❌ 猜錯 6 次了，正確答案是 {game['word']}。")
                 del games[key]
             return
-    await ctx.send("目前沒有你可以猜的遊戲，或是單字還沒設定。")
+    await interaction.response.send_message("目前沒有你可以猜的遊戲，或是單字還沒設定。")
 
-@bot.command()
-async def resetgame(ctx):
-    user_id = ctx.author.id
+@tree.command(name="resetgame", description="重置你參與的 Wordle 對戰")
+async def resetgame(interaction: discord.Interaction):
+    user_id = interaction.user.id
     for key in list(games.keys()):
         if user_id in key:
             del games[key]
-            await ctx.send("🔄 對戰已重置成功。")
+            await interaction.response.send_message("🔄 對戰已重置成功。", ephemeral=True)
             return
-    await ctx.send("❌ 沒有找到你參與的對戰。")
+    await interaction.response.send_message("❌ 沒有找到你參與的對戰。", ephemeral=True)
 
 @bot.event
 async def on_ready():
-    print(f"✅ Bot 已啟動：{bot.user}")
-    await tree.sync()
-    print("✅ Slash 指令已同步完成")
+    print(f"✅ Bot 已上線：{bot.user}")
+    try:
+        synced = await tree.sync()
+        print(f"✅ 成功同步 {len(synced)} 個 slash 指令")
+    except Exception as e:
+        print(f"❌ 指令同步失敗：{e}")
 
 bot.run(TOKEN)
