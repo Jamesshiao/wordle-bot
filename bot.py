@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+from discord import app_commands
 import os
 from dotenv import load_dotenv
 import string
@@ -9,10 +10,13 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 
 intents = discord.Intents.default()
 intents.message_content = True
+
 bot = commands.Bot(command_prefix="!", intents=intents)
+tree = app_commands.CommandTree(bot)
 
 games = {}
 
+# Wordle feedback
 def feedback(guess, answer):
     result = []
     answer_chars = list(answer)
@@ -31,6 +35,7 @@ def feedback(guess, answer):
                 result[i] = "⬛"
     return "".join(result)
 
+# 鍵盤樣式顯示
 def render_keyboard(correct, present, wrong):
     def style(ch):
         if ch in correct:
@@ -52,6 +57,22 @@ def render_keyboard(correct, present, wrong):
 
     return f"```{line1}\n{line2}\n{line3}```"
 
+# ========== Slash 指令 /setword（只有自己看到） ==========
+@tree.command(name="setword", description="設定 Wordle 答案（只有自己看得到）")
+@app_commands.describe(word="請輸入 5 個英文字母單字")
+async def setword(interaction: discord.Interaction, word: str):
+    user_id = interaction.user.id
+    for key in games:
+        if user_id in key and games[key]["word"] is None:
+            if len(word) != 5 or not word.isalpha():
+                await interaction.response.send_message("❌ 請輸入 5 個英文字母的單字。", ephemeral=True)
+                return
+            games[key]["word"] = word.upper()
+            await interaction.response.send_message("✅ 答案已設定成功，等待對方猜測吧！", ephemeral=True)
+            return
+    await interaction.response.send_message("❌ 沒有你可以設定答案的遊戲。", ephemeral=True)
+
+# ========== 保留原本的 !startgame / !guess 指令 ==========
 @bot.command()
 async def startgame(ctx, opponent: discord.Member):
     player1 = ctx.author.id
@@ -68,20 +89,7 @@ async def startgame(ctx, opponent: discord.Member):
         "present": set(),
         "wrong": set()
     }
-    await ctx.send(f"對戰已建立！請 <@{player1}> 私訊我使用 `!setword` 設定答案單字。")
-
-@bot.command()
-async def setword(ctx, word: str):
-    user_id = ctx.author.id
-    for key in games:
-        if user_id in key and games[key]["word"] is None:
-            if len(word) != 5 or not word.isalpha():
-                await ctx.send("請輸入5個英文字母的單字。")
-                return
-            games[key]["word"] = word.upper()
-            await ctx.send("答案已設定成功。等待對方猜測吧！")
-            return
-    await ctx.send("目前沒有你需要設定單字的遊戲。")
+    await ctx.send(f"對戰已建立！請 <@{player1}> 使用 `/setword` 指令設定答案單字。")
 
 @bot.command()
 async def guess(ctx, word: str):
@@ -122,11 +130,12 @@ async def guess(ctx, word: str):
 
 @bot.event
 async def on_ready():
-    print(f"✅ Bot 已啟動：{bot.user}")
+    print(f"✅ Bot 已上線：{bot.user}")
+    await tree.sync()
+    print("✅ Slash 指令已同步完成")
 
 @bot.event
 async def on_message(message):
-    print(f"[DEBUG] 收到訊息：{message.content}，來自：{message.author}")
     await bot.process_commands(message)
 
 bot.run(TOKEN)
