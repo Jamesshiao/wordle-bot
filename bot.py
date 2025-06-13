@@ -1,6 +1,5 @@
 import discord
 from discord.ext import commands
-from discord import app_commands
 import os
 from dotenv import load_dotenv
 import string
@@ -10,13 +9,10 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 
 intents = discord.Intents.default()
 intents.message_content = True
-
 bot = commands.Bot(command_prefix="!", intents=intents)
-tree = bot.tree 
 
 games = {}
 
-# Wordle feedback
 def feedback(guess, answer):
     result = []
     answer_chars = list(answer)
@@ -35,7 +31,6 @@ def feedback(guess, answer):
                 result[i] = "⬛"
     return "".join(result)
 
-# 鍵盤樣式顯示
 def render_keyboard(correct, present, wrong):
     def style(ch):
         if ch in correct:
@@ -57,40 +52,6 @@ def render_keyboard(correct, present, wrong):
 
     return f"```{line1}\n{line2}\n{line3}```"
 
-# !setword 指令
-@bot.command()
-async def setword(ctx, word: str):
-    user_id = ctx.author.id
-    word = word.upper()
-
-    for key, game in games.items():
-        if user_id in key:
-            if game["word"] is not None:
-                await ctx.send("⚠️ 該對戰已經設定過答案了。")
-                return
-
-            if len(word) != 5 or not word.isalpha():
-                await ctx.send("❌ 請輸入 5 個英文字母的單字。")
-                return
-
-            game["word"] = word
-            await ctx.send(f"✅ 答案已設定成功：{word}")
-            return
-
-    await ctx.send("❌ 找不到你可以設定答案的對戰。")
-
-# !resetgame 指令
-@bot.command()
-async def resetgame(ctx):
-    user_id = ctx.author.id
-    for key in list(games.keys()):
-        if user_id in key:
-            del games[key]
-            await ctx.send("🔄 對戰已重置成功。")
-            return
-    await ctx.send("❌ 沒有找到你參與的對戰。")
-
-# !startgame 指令
 @bot.command()
 async def startgame(ctx, opponent: discord.Member):
     player1 = ctx.author.id
@@ -107,9 +68,21 @@ async def startgame(ctx, opponent: discord.Member):
         "present": set(),
         "wrong": set()
     }
-    await ctx.send(f"對戰已建立！請 <@{player1}> 使用 `!setword` 指令設定答案單字。")
+    await ctx.send(f"對戰已建立！請 <@{player1}> 私訊我使用 `!setword` 設定答案單字。")
 
-# !guess 指令
+@bot.command()
+async def setword(ctx, word: str):
+    user_id = ctx.author.id
+    for key in games:
+        if user_id in key and games[key]["word"] is None:
+            if len(word) != 5 or not word.isalpha():
+                await ctx.send("請輸入5個英文字母的單字。")
+                return
+            games[key]["word"] = word.upper()
+            await ctx.send("答案已設定成功。等待對方猜測吧！")
+            return
+    await ctx.send("目前沒有你需要設定單字的遊戲。")
+
 @bot.command()
 async def guess(ctx, word: str):
     user_id = ctx.author.id
@@ -123,6 +96,7 @@ async def guess(ctx, word: str):
             fb = feedback(word, game["word"])
             await ctx.send(f"{word} ➤ {fb}")
 
+            # 更新字母狀態
             for i in range(len(word)):
                 ch = word[i]
                 if fb[i] == "🟩":
@@ -146,15 +120,23 @@ async def guess(ctx, word: str):
             return
     await ctx.send("目前沒有你可以猜的遊戲，或是單字還沒設定。")
 
+@bot.command()
+async def resetgame(ctx):
+    user_id = ctx.author.id
+    for key in list(games.keys()):
+        if user_id in key:
+            del games[key]
+            await ctx.send("🔄 對戰已重置成功。")
+            return
+    await ctx.send("❌ 沒有找到你參與的對戰。")
+
 @bot.event
 async def on_ready():
-    print(f"✅ Bot 已上線：{bot.user}")
-
+    print(f"✅ Bot 已啟動：{bot.user}")
 
 @bot.event
 async def on_message(message):
-    if message.author.bot:
-        return  # 👈 避免 bot 處理自己的訊息
+    print(f"[DEBUG] 收到訊息：{message.content}，來自：{message.author}")
     await bot.process_commands(message)
 
 bot.run(TOKEN)
