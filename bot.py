@@ -1,8 +1,8 @@
 import discord
 from discord.ext import commands
+from discord import app_commands
 import os
 from dotenv import load_dotenv
-import string
 
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
@@ -10,6 +10,7 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
+tree = bot.tree
 
 games = {}
 
@@ -68,20 +69,22 @@ async def startgame(ctx, opponent: discord.Member):
         "present": set(),
         "wrong": set()
     }
-    await ctx.send(f"對戰已建立！請 <@{player1}> 私訊我使用 `!setword` 設定答案單字。")
+    await ctx.send(f"對戰已建立！請 <@{player1}> 使用 `/setword` 指令設定答案單字。")
 
-@bot.command()
-async def setword(ctx, word: str):
-    user_id = ctx.author.id
-    for key in games:
-        if user_id in key and games[key]["word"] is None:
+@tree.command(name="setword", description="設定 Wordle 答案（只有你看得到）")
+@app_commands.describe(word="5 個英文字母單字")
+async def setword(interaction: discord.Interaction, word: str):
+    user_id = interaction.user.id
+    word = word.upper()
+    for key, game in games.items():
+        if user_id in key and game["word"] is None:
             if len(word) != 5 or not word.isalpha():
-                await ctx.send("請輸入5個英文字母的單字。")
+                await interaction.response.send_message("❌ 請輸入 5 個英文字母的單字。", ephemeral=True)
                 return
-            games[key]["word"] = word.upper()
-            await ctx.send("答案已設定成功。等待對方猜測吧！")
+            game["word"] = word
+            await interaction.response.send_message("✅ 答案已設定成功，等待對方猜測吧！", ephemeral=True)
             return
-    await ctx.send("目前沒有你需要設定單字的遊戲。")
+    await interaction.response.send_message("❌ 沒有你可以設定答案的遊戲。", ephemeral=True)
 
 @bot.command()
 async def guess(ctx, word: str):
@@ -94,9 +97,8 @@ async def guess(ctx, word: str):
             word = word.upper()
             game["tries"] += 1
             fb = feedback(word, game["word"])
-            await ctx.send(f"{word} ➤ {fb}")
+            await ctx.send(f"{word} ➤ {fb}（{game['tries']}/6）")
 
-            # 更新字母狀態
             for i in range(len(word)):
                 ch = word[i]
                 if fb[i] == "🟩":
@@ -133,10 +135,7 @@ async def resetgame(ctx):
 @bot.event
 async def on_ready():
     print(f"✅ Bot 已啟動：{bot.user}")
-
-@bot.event
-async def on_message(message):
-    print(f"[DEBUG] 收到訊息：{message.content}，來自：{message.author}")
-    await bot.process_commands(message)
+    await tree.sync()
+    print("✅ Slash 指令已同步完成")
 
 bot.run(TOKEN)
