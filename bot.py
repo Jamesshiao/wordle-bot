@@ -81,15 +81,16 @@ async def setword(interaction: discord.Interaction, word: str):
     await interaction.response.send_message("\u274c 找不到你可以設定答案的對戰。", ephemeral=True)
 
 # /resetgame 指令
-tree.command(name="resetgame", description="重置你參與的 Wordle 對戰")
+@tree.command(name="resetgame", description="重置你參與的 Wordle 對戰")
 async def resetgame(interaction: discord.Interaction):
     user_id = interaction.user.id
+    print(f"[DEBUG] {user_id} 嘗試執行 /resetgame，現有 games.keys(): {list(games.keys())}")
     for key in list(games.keys()):
         if user_id in key:
             del games[key]
-            await interaction.response.send_message("\U0001f504 對戰已重置成功。", ephemeral=True)
+            await interaction.response.send_message("🔄 對戰已重置成功。", ephemeral=True)
             return
-    await interaction.response.send_message("\u274c 沒有找到你參與的對戰。", ephemeral=True)
+    await interaction.response.send_message("❌ 沒有找到你參與的對戰。", ephemeral=True)
 
 # !startgame 指令
 @bot.command()
