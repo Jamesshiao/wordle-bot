@@ -58,7 +58,7 @@ def render_keyboard(correct, present, wrong):
     return f"```{line1}\n{line2}\n{line3}```"
 
 # /setword 指令
-tree.command(name="setword", description="設定 Wordle 答案（只有自己看得到）")
+@tree.command(name="setword", description="設定 Wordle 答案（只有自己看得到）")
 @app_commands.describe(word="請輸入 5 個英文字母單字")
 async def setword(interaction: discord.Interaction, word: str):
     user_id = interaction.user.id
