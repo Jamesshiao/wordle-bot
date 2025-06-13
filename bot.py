@@ -150,8 +150,11 @@ async def guess(ctx, word: str):
 async def on_ready():
     print(f"✅ Bot 已上線：{bot.user}")
 
+
 @bot.event
 async def on_message(message):
+    if message.author.bot:
+        return  # 👈 避免 bot 處理自己的訊息
     await bot.process_commands(message)
 
 bot.run(TOKEN)
