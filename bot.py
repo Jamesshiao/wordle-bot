@@ -67,7 +67,8 @@ async def startgame(ctx, opponent: discord.Member):
         "tries": 0,
         "correct": set(),
         "present": set(),
-        "wrong": set()
+        "wrong": set(),
+        "channel": ctx.channel
     }
     await ctx.send(f"對戰已建立！請 <@{player1}> 使用 `/setword` 指令設定答案單字。")
 
@@ -77,12 +78,23 @@ async def setword(interaction: discord.Interaction, word: str):
     user_id = interaction.user.id
     word = word.upper()
     for key, game in games.items():
-        if user_id in key and game["word"] is None:
+        if user_id in key:
+            if game["word"] is not None:
+                await interaction.response.send_message("⚠️ 該對戰已經設定過答案了。", ephemeral=True)
+                return
+
             if len(word) != 5 or not word.isalpha():
                 await interaction.response.send_message("❌ 請輸入 5 個英文字母的單字。", ephemeral=True)
                 return
+
             game["word"] = word
-            await interaction.response.send_message("✅ 答案已設定成功，等待對方猜測吧！", ephemeral=True)
+            await interaction.response.send_message(f"✅ 答案已設定成功：{word}", ephemeral=True)
+
+            # ➤ 對猜題者發送公開訊息
+            channel = game.get("channel")
+            guesser_id = game["guesser"]
+            if channel:
+                await channel.send(f"📢 <@{guesser_id}> 現在可以開始猜題囉！請使用 `!guess` 試試看吧！")
             return
     await interaction.response.send_message("❌ 沒有你可以設定答案的遊戲。", ephemeral=True)
 
